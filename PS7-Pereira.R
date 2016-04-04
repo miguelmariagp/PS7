@@ -65,11 +65,15 @@ as.matrix(expand.grid(seq(ll[1],uu[1]-1,by=1),
 ###########
 
 
-sg.int.multidim<-function(f,lower,upper){ 
+sg.int.multidim<-function(f,lower,upper, parallel=FALSE){ 
   require("SparseGrid")
-  
+  require("plyr")
+  if (parallel=TRUE){
+    require("doSNOW")
+    registerDoSNOW(makeCluster(2, type = "SOCK"))
+  }
+
   lower<-floor(lower)
-  
   upper<-ceiling(upper)
   
   if (any(lower>upper)) stop("lower must be smaller than upper")
@@ -93,16 +97,27 @@ sg.int.multidim<-function(f,lower,upper){
     weights<-c(weights,sp.grid$weights)
   }
   
-  gx.sp <- apply(nodes, 1, f)
-  val.sp <- gx.sp %*%weights
-  val.sp
+  gx.sp <- aaply(.data=nodes,
+                 .margins = 1,
+                 .parallel = parallel,
+                 .fun = f)
+  val.sp <- t(gx.sp) %*%weights
+  return(val.sp)
+  
 }
+
+
 
 ###TESTING THE FUNCTION
 #Three dimensions
 ll<-c(1,2,3)
 uu<-c(4,6,8)
+f<-function(x) x^2
+#Without parallel
 sg.int.multidim(f,lower=ll,upper=uu)
+
+#With parallel
+sg.int.multidim(f,lower=ll,upper=uu,parallel=TRUE)
 
 #Four dimensions
 lll<-sort(rnorm(4,1,4))
@@ -115,6 +130,14 @@ sg.int.multidim(f,lower=lll,upper=uuu)
 ###########
 #Exercise 2
 ###########
+
+Already above
+
+
+###########
+#Exercise 3
+###########
+
 
 library(testthat)
 test_that("Correct inputs",{
@@ -135,3 +158,16 @@ example1 <- function(x){
 adaptIntegrate(example1,c(1,2,3),c(5,6,7))
 
 sg.int.multidim(example1,c(1,2,3),c(5,6,7))
+
+
+###########
+#Exercise 4
+###########
+
+
+# Measuring gains in speed when running in parallel
+library(microbenchmark)
+
+microbenchmark(sg.int.multidim(f,lower=ll,upper=uu), 
+               sg.int.multidim(f,lower=ll,upper=uu, parallel=T),
+               times=10)
