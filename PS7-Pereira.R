@@ -2,12 +2,6 @@
 #Miguel Pereira
 
 #SparseGrid function
-#Figuring what it does
-l<-c(1,2)
-u<-c(4,6)
-as.matrix(expand.grid(seq(l[1],u[1]-1,by=1),
-                      seq(l[2],u[2]-1,by=1)))
-t<-createIntegrationGrid( 'KPU', dimension=2, k=5 )
 
 
 #It's code
@@ -68,9 +62,12 @@ as.matrix(expand.grid(seq(ll[1],uu[1]-1,by=1),
 sg.int.multidim<-function(f,lower,upper, parallel=FALSE){ 
   require("SparseGrid")
   require("plyr")
-  if (parallel=TRUE){
-    require("doSNOW")
-    registerDoSNOW(makeCluster(2, type = "SOCK"))
+  
+  #The necessary instructions for the parallel option to work
+  if (parallel==TRUE){
+    require("doParallel")
+    registerDoParallel(,cores=2)
+    #registerDoSNOW(makeCluster(2, type = "SOCK"))
   }
 
   lower<-floor(lower)
@@ -109,10 +106,24 @@ sg.int.multidim<-function(f,lower,upper, parallel=FALSE){
 
 
 ###TESTING THE FUNCTION
+
+#Two dimension
+l<-c(1,2)
+u<-c(4,6)
+f<-function(x) x^2
+#Without parallel
+  #The original function
+  sg.int(f,lower=l,upper=u)
+  #My function allowing different dimensions and parallel
+  sg.int.multidim(f,lower=l,upper=u)
+
+#With parallel
+sg.int.multidim(f,lower=l,upper=u,parallel=TRUE)
+
+
 #Three dimensions
 ll<-c(1,2,3)
 uu<-c(4,6,8)
-f<-function(x) x^2
 #Without parallel
 sg.int.multidim(f,lower=ll,upper=uu)
 
@@ -131,7 +142,7 @@ sg.int.multidim(f,lower=lll,upper=uuu)
 #Exercise 2
 ###########
 
-Already above
+#Already above
 
 
 ###########
@@ -149,15 +160,6 @@ test_that("Correct inputs",{
 typeof(fun)
 
 
-library(cubature)
-
-example1 <- function(x){
-  return(cos(x[1]+x[2]+x[3]))
-}
-
-adaptIntegrate(example1,c(1,2,3),c(5,6,7))
-
-sg.int.multidim(example1,c(1,2,3),c(5,6,7))
 
 
 ###########
@@ -168,6 +170,34 @@ sg.int.multidim(example1,c(1,2,3),c(5,6,7))
 # Measuring gains in speed when running in parallel
 library(microbenchmark)
 
+#Something is wrong with my parallel
+microbenchmark(sg.int.multidim(f,lower=l,upper=u), 
+               sg.int.multidim(f,lower=l,upper=u, parallel=T),
+               times=5)
 microbenchmark(sg.int.multidim(f,lower=ll,upper=uu), 
                sg.int.multidim(f,lower=ll,upper=uu, parallel=T),
-               times=10)
+               times=5)
+
+
+
+
+###########
+#Exercise 5
+###########
+
+library(cubature)
+library(mvtnorm)
+
+
+example1 <- function(x){
+  dmvnorm(x, mean=rep(0, 2), sigma=diag(rep(1, 2)))
+}
+
+#The correct answer for the integral
+ans <- as.numeric(pmvnorm(upper=rep(1, 2), mean=rep(0, 2), sigma=diag(rep(1, 2))))
+
+#With adaptIntegrate the result is very close to the truth
+adaptIntegrate(myNorm, lowerLimit=rep(-100, 2), upperLimit=rep(1, 2))$integral - ans
+#With my function it is not so close:
+sg.int.multidim(myNorm, lower=rep(-1, 2), upper=rep(1, 2)) - ans
+
