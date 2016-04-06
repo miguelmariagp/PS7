@@ -47,7 +47,6 @@ sg.int<-function(g,...,lower,upper)
 #Exercise 1
 ###########
 
-
 sg.int.multidim<-function(f,lower,upper, parallel=FALSE){ 
   require("SparseGrid")
   require("plyr")
@@ -56,21 +55,21 @@ sg.int.multidim<-function(f,lower,upper, parallel=FALSE){
   if (parallel==TRUE){
     require("doParallel")
     registerDoParallel(cores=4)
-    #registerDoSNOW(makeCluster(2, type = "SOCK"))
   }
-
+  
   lower<-floor(lower)
   upper<-ceiling(upper)
   
-  if (any(lower>upper)) stop("lower must be smaller than upper")
+  if (any(lower>upper)) stop("Lower must be smaller than upper")
+  if (length(lower)!=length(upper)) stop("Lower and Upper vectors have to be of the same length")
   
   #Number of dimensions derived from the length of the vectors introduced
   dim<-length(lower)
   
   #This gives us all possible combinations of the supplied vectors
   gridss<-as.matrix(expand.grid(apply(cbind(lower,upper),
-                    1,function(x) seq(x[1],x[2]-1,by=1))))
-
+                                      1,function(x) seq(x[1],x[2]-1,by=1))))
+  
   #Note: dimension = number of dimensions wanted
   sp.grid <- createIntegrationGrid( 'KPU', dimension=dim, k=5 )
   
@@ -83,15 +82,12 @@ sg.int.multidim<-function(f,lower,upper, parallel=FALSE){
     weights<-c(weights,sp.grid$weights)
   }
   
-  gx.sp <- aaply(.data=nodes,
-                 .margins = 1,
-                 .parallel = parallel,
-                 .fun = f)
-  val.sp <- t(gx.sp) %*%weights
+  gx.sp <- apply(nodes, 1, f)
+  
+  val.sp <- gx.sp %*%weights
   return(val.sp)
   
 }
-
 
 
 ###TESTING THE FUNCTION
@@ -106,8 +102,9 @@ f<-function(x) x^2
   #My function allowing different dimensions and parallel
   sg.int.multidim(f,lower=l,upper=u)
 
-#With parallel
-sg.int.multidim(f,lower=l,upper=u,parallel=TRUE)
+  #With parallel
+  sg.int.multidim(f,lower=l,upper=u, parallel=TRUE)
+  
 
 
 #Three dimensions
@@ -137,41 +134,33 @@ sg.int.multidim(f,lower=lll,upper=uuu)
 ###########
 #Exercise 3
 ###########
-
-#####TO DO
-
 library(testthat)
-test_that("Correct inputs",{
-  fun<-function(x) x^2
-  expect_that(typeof())
-  
-  
-})
-typeof(fun)
+library(mvtnorm)
 
+ll<-c(1,2,3)
+uu<-c(4,6,8)
+f<-function(x) x^2
 
 test_that("Basic output test", {
-  ll<-c(1,2,3)
-  uu<-c(4,6,8)
-  f<-function(x) x^2
   int <- sg.int.multidim(f,lower=ll,upper=uu)
-  
   expect_that( int, is_a("matrix") )
   expect_that(length(int), equals(length(ll)))
 })
 
+(x1<-as.numeric(pmvnorm(upper=rep(.5, 2), mean=rep(0, 2), sigma=diag(rep(1, 2)))))
+(x2<-as.numeric(sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2))))
 
+#Fine here
+test_that('Function within 0.05 of true answer',{
+  expect_equal(x1,x2,tolerance=.05)
+}
+)
 
-test_that("Output test", {
-  ll<-c(1,2,3)
-  uu<-c(4,6,8)
-  f<-function(x) x^2
-  int <- sg.int.multidim(f,lower=ll,upper=uu)
-  
-  expect_that( int, is_a("matrix") )
-  expect_that(length(int), equals(length(ll)))
-})
-
+#Not fine anymore
+test_that('Function within 0.01 of true answer',{
+  expect_equal(x1,x2,tolerance=.01)
+}
+)
 
 
 ###########
@@ -182,14 +171,16 @@ test_that("Output test", {
 # Measuring gains in speed when running in parallel
 library(microbenchmark)
 
-#Something is wrong with my parallel
-microbenchmark(sg.int.multidim(f,lower=l,upper=u), 
+#Maybe it's a problem with my computer, but it looks like it doesn't like to do it in parallel
+  #Case with two dimensions
+  microbenchmark(sg.int.multidim(f,lower=l,upper=u), 
                sg.int.multidim(f,lower=l,upper=u, parallel=T),
                times=5)
-microbenchmark(sg.int.multidim(f,lower=ll,upper=uu), 
+  #Case with three dimensions
+  microbenchmark(sg.int.multidim(f,lower=ll,upper=uu), 
                sg.int.multidim(f,lower=ll,upper=uu, parallel=T),
                times=5)
-
+#I shouldn't blame the computer. It's quite likely my fault.
 
 
 
@@ -198,7 +189,6 @@ microbenchmark(sg.int.multidim(f,lower=ll,upper=uu),
 ###########
 
 library(cubature)
-library(mvtnorm)
 
 
 example1 <- function(x){
@@ -208,10 +198,21 @@ example1 <- function(x){
 #The correct answer for the integral
 ans <- as.numeric(pmvnorm(upper=rep(1, 2), mean=rep(0, 2), sigma=diag(rep(1, 2))))
 
+##### COMPARING ACCURACY
+
 #With adaptIntegrate the result is very close to the truth
 adaptIntegrate(example1, lowerLimit=rep(-100, 2), upperLimit=rep(1, 2))$integral - ans
-#With my function it is not so close:
+#With my function it is not so close, but not bad either
 sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2)) - ans
+
+
+### COMPARTING SPEED
+microbenchmark("adapt"=adaptIntegrate(example1, lowerLimit=rep(-100, 2), upperLimit=rep(1, 2))$integral,
+               "sparse"=sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2)),
+               times=10)
+microbenchmark("adapt"=adaptIntegrate(example1, lowerLimit=rep(-100, 2), upperLimit=rep(1, 2))$integral,
+               "sparse"=sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2)),
+               times=10)
 
 
 
@@ -219,47 +220,16 @@ sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2)) - ans
 #Exercise 6
 ###########
 
-mc.int<-function(f,lower,upper, parallel=FALSE){ 
-  require("SparseGrid")
-  require("plyr")
-  require("mvtnorm")
-  #The necessary instructions for the parallel option to work
-  if (parallel==TRUE){
-    require("doParallel")
-    registerDoParallel(cores=4)
-  }
-  
-  lower<-floor(lower)
-  upper<-ceiling(upper)
-  
-  if (any(lower>upper)) stop("lower must be smaller than upper")
-  
-  #Number of dimensions derived from the length of the vectors introduced
+integrateMC <- function(func, lower, upper, n){
   dim<-length(lower)
-  
-  #This gives us all possible combinations of the supplied vectors
-  gridss<-as.matrix(expand.grid(apply(cbind(lower,upper),
-                                      1,function(x) seq(x[1],x[2]-1,by=1))))
-  
-  #Note: dimension = number of dimensions wanted
-  sp.grid <- createMonteCarloGrid(rnorm, dimension=2, num.sim=100 )
-  nodes<-gridss[1,]+sp.grid$nodes
-  weights<-sp.grid$weights
-  
-  for (i in 2:nrow(gridss)){
-    nodes<-rbind(nodes,gridss[i,]+sp.grid$nodes)  
-    weights<-c(weights,sp.grid$weights)
-  }
-  
-  gx.sp <- aaply(.data=nodes,
-                 .margins = 1,
-                 .parallel = parallel,
-                 .fun = f)
-  val.sp <- t(gx.sp) %*%weights
-  return(val.sp)
-  
+  # randomly selecting coordinates to integrate over
+  random.points <- matrix(runif(n=(n*dim), min=lower, max=upper), ncol=dim)
+  # Applying the function to the different points
+  x.values <- apply(random.points, 1, func)
+  # "Integrating" by taking count of number of points under curve (mean), multiplying by length of integral
+  # and taking it to the power of how many dimensions we have
+  return(mean(x.values)*(upper-lower)^dim)
 }
 
-
-sg.int.multidim(example1, lower=rep(-1, 2), upper=rep(1, 2))
-mc.int(example1, lower=rep(-1, 2), upper=rep(1, 2))
+# Example
+integrateMC(example1, lower=c(-2,5), upper=c(2,6), n=1000)
